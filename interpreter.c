@@ -209,7 +209,7 @@ void execute_instruction(char* instr_raw, int processID, MemoryWord memory[], PC
         BinarySemaphore* target_sem = NULL;
         if (strcmp(arg1, "userInput") == 0) target_sem = &userInput;
         else if (strcmp(arg1, "userOutput") == 0) target_sem = &userOutput;
-        else if (strcmp(arg1, "fileAccess") == 0) target_sem = &fileAccess;
+        else if (strcmp(arg1, "file") == 0) target_sem = &fileAccess;
 
         if (target_sem != NULL) {
             // 2. Check if the resource is free
@@ -231,7 +231,7 @@ void execute_instruction(char* instr_raw, int processID, MemoryWord memory[], PC
         BinarySemaphore* target_sem = NULL;
         if (strcmp(arg1, "userInput") == 0) target_sem = &userInput;
         else if (strcmp(arg1, "userOutput") == 0) target_sem = &userOutput;
-        else if (strcmp(arg1, "fileAccess") == 0) target_sem = &fileAccess;
+        else if (strcmp(arg1, "file") == 0) target_sem = &fileAccess;
 
         if (target_sem != NULL) {
             // 2. Security Check: Only the owner can signal a release

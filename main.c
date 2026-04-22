@@ -29,24 +29,34 @@ int get_running_process(PCB processes[], int total) {
     return -1; // No one is running
 }
 
+// Helper to find the value of a variable in a process's memory block
 char* get_variable_value(int processID, char* varName, MemoryWord memory[], PCB processes[]) {
-    int start = processes[processID].mem_start;
+    int p_idx = processID - 1; // --> FIX: Convert ID to 0-based array index
+    int start = processes[p_idx].mem_start;
+    
+    // Variables are always at offsets +4, +5, and +6
     for (int i = 4; i <= 6; i++) {
         if (strcmp(memory[start + i].name, varName) == 0) {
             return memory[start + i].value;
         }
     }
-    return varName; 
+    return varName; // If not found, assume it's a literal value (like "10")
 }
 
+// Helper to update a variable's value or assign a new one to an empty slot
 void set_variable_value(int processID, char* varName, char* newValue, MemoryWord memory[], PCB processes[]) {
-    int start = processes[processID].mem_start;
+    int p_idx = processID - 1; // --> FIX: Convert ID to 0-based array index
+    int start = processes[p_idx].mem_start;
+    
+    // First, try to find if the variable already exists to update it
     for (int i = 4; i <= 6; i++) {
         if (strcmp(memory[start + i].name, varName) == 0) {
             strcpy(memory[start + i].value, newValue);
             return;
         }
     }
+    
+    // If not found, find the first "NULL" slot to assign it
     for (int i = 4; i <= 6; i++) {
         if (strcmp(memory[start + i].value, "NULL") == 0) {
             strcpy(memory[start + i].name, varName);
@@ -68,6 +78,11 @@ int main()
     
     PCB processes[3]; 
     bool loaded[3] = {false, false, false};
+
+    // --> ADD THESE THREE LINES BACK <--
+    init_memory(main_memory);
+    initQueue(&ready_queue);
+    initQueue(&general_blocked_queue);
 
     // Wipe Hard Disk clean
     for (int i = 0; i < 100; i++) {
