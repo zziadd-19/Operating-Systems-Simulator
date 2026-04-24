@@ -97,6 +97,11 @@ int main()
     PCB processes[3]; 
     bool loaded[3] = {false, false, false};
 
+    for (int i = 0; i < 3; i++) {
+        processes[i].mem_start = -1;
+        processes[i].mem_end = -1;
+    }
+
     // --> ADD THESE THREE LINES BACK <--
     init_memory(main_memory);
     initQueue(&ready_queue);
@@ -258,7 +263,14 @@ int main()
             // 5. SYSTEM TRACE
             printQueue(&ready_queue, "Ready Queue");
 
+            // Print all Blocked and Semaphore Queues
+            printQueue(&general_blocked_queue, "General Blocked Queue");
+            printQueue(&userInput.blocked_queue, "userInput Semaphore Queue");
+            printQueue(&userOutput.blocked_queue, "userOutput Semaphore Queue");
+            printQueue(&fileAccess.blocked_queue, "fileAccess Semaphore Queue");
+
             print_memory_state(main_memory);
+            print_disk_state(hard_disk);
 
             current_time++; 
         }
@@ -266,7 +278,163 @@ int main()
     else if (scheduling_choice == 2)
     {
         printf("\n--- Starting Round Robin Execution ---\n");
-        while (finished_processes < 3) {}
+
+        // --- 1. SETUP RR VARIABLES ---
+        initQueue(&ready_queue); // Ensure the line is completely clean
+        
+        int time_quantum;
+        printf("Enter the Time Quantum (Q): ");
+        scanf("%d", &time_quantum);
+        printf("-> Time Quantum set to %d ticks.\n", time_quantum);
+
+        int process_ticks = 0; // Stopwatch for the current process
+        int runningProcessID = -1;
+
+        int arrival_times[3] = {0, 1, 4};
+        int service_times[3];
+        int disk_locations[3] = {-1, -1, -1};
+        const char *programs[] = {"Program_1.txt", "Program_2.txt", "Program_3.txt"};
+
+        // Calculate service times dynamically
+        for (int i = 0; i < 3; i++) {
+            service_times[i] = get_program_memory_size(programs[i]) - 7;
+        }
+
+        while (finished_processes < 3)
+        {
+            printf("\n=== Clock Cycle: %d ===\n", current_time);
+
+            // --- 2. ARRIVALS & MEMORY SWAPPING ---
+            for (int i = 0; i < 3; i++)
+            {
+                if (current_time == arrival_times[i] && !loaded[i])
+                {
+                    int space_needed = service_times[i] + 7;
+                    int start_idx = find_first_empty_index(main_memory);
+
+                    if (start_idx == -1 || (start_idx + space_needed) > 40) {
+                        printf("[Memory Manager]: Memory Full! Need to swap a process to Disk...\n");
+                        int victim_id = get_victim_process(processes, 3, current_time, arrival_times, service_times);
+                        disk_locations[victim_id - 1] = swap_to_disk(victim_id, processes, main_memory, hard_disk);
+                        compact_memory(processes, 3, main_memory);
+                        start_idx = find_first_empty_index(main_memory);
+                    }
+
+                    processes[i] = load_program_to_memory(main_memory, start_idx, programs[i], i + 1);
+                    
+                    // Put brand new processes at the back of the line
+                    enqueue(&ready_queue, processes[i].processID);
+                    loaded[i] = true;
+                }
+            }
+
+            // --- 3. PREEMPTION LOGIC (TIME QUANTUM EXPIRED) ---
+            if (runningProcessID != -1) {
+                if (process_ticks >= time_quantum) {
+                    printf("[Round Robin]: P%d exceeded Time Quantum (%d ticks). Moving to back of line...\n", runningProcessID, time_quantum);
+                    processes[runningProcessID - 1].state = STATE_READY;
+                    
+                    // Throw them to the back of the ready_queue
+                    enqueue(&ready_queue, runningProcessID);
+                    runningProcessID = -1;
+                }
+            }
+
+            // --- 4. THE SCHEDULER ---
+            // If the CPU is empty, just grab whoever is at the very front of the line
+            if (runningProcessID == -1 && !isEmpty(&ready_queue)) {
+                runningProcessID = dequeue(&ready_queue);
+                process_ticks = 0; // Reset stopwatch for the new process
+                processes[runningProcessID - 1].state = STATE_RUNNING;
+                printf("[Scheduler]: Selected P%d from Ready Queue\n", runningProcessID);
+            }
+
+            // --- 5. EXECUTION ---
+            if (runningProcessID != -1)
+            {
+                if (!is_process_in_memory(runningProcessID, processes)) {
+                    printf("[OS Alert]: P%d is on the Disk! Need to swap it back in.\n", runningProcessID);
+                    ensure_process_in_memory(runningProcessID, processes, main_memory, hard_disk, 
+                                             disk_locations, service_times, current_time, arrival_times);
+                }
+                
+                int p_idx = runningProcessID - 1;
+                int pc = processes[p_idx].program_counter;
+
+                printf("[CPU]: P%d executing -> '%s'\n", runningProcessID, main_memory[pc].value);
+                execute_instruction(main_memory[pc].value, runningProcessID, main_memory, processes);
+                
+                // ---> THE STATE FIXER <---
+                // Because interpreter.c directly enqueues awoken processes into ready_queue
+                // but leaves their state as BLOCKED, we do a quick scan to force them to READY.
+                for (int i = 0; i < ready_queue.count; i++) {
+                    int id = ready_queue.process_ids[(ready_queue.front + i) % MAX_PROCESSES];
+                    if (processes[id - 1].state == STATE_BLOCKED) {
+                        processes[id - 1].state = STATE_READY;
+                        printf("[Round Robin]: Process P%d woke up and is Ready!\n", id);
+                    }
+                }
+                // --------------------------
+
+                processes[p_idx].program_counter++;
+                process_ticks++; // Tick the quantum stopwatch!
+
+                // --- 6. STATE CHECKS ---
+                if (processes[p_idx].program_counter > processes[p_idx].mem_end)
+                {
+                    printf("[OS]: Process P%d has Finished Execution.\n", runningProcessID);
+                    for (int j = processes[p_idx].mem_start; j <= processes[p_idx].mem_end; j++) {
+                        main_memory[j].name[0] = '\0';
+                        main_memory[j].value[0] = '\0';
+                    }
+                    processes[p_idx].mem_start = -1;
+                    processes[p_idx].mem_end = -1;
+                    processes[p_idx].state = STATE_FINISHED;
+
+                    compact_memory(processes, 3, main_memory);
+                    runningProcessID = -1; 
+                    finished_processes++;
+                }
+                else if (processes[p_idx].state == STATE_BLOCKED)
+                {
+                    printf("[OS]: Process P%d is BLOCKED. Context switching...\n", runningProcessID);
+                    runningProcessID = -1; 
+                }
+            }
+            else
+            {
+                printf("[CPU]: IDLE\n");
+            }
+
+            // --- 7. SYSTEM TRACE (With the Memory Synchronizer!) ---
+            for (int p = 0; p < 3; p++) {
+                if (processes[p].mem_start != -1) {
+                    int state_idx = processes[p].mem_start + 1; 
+                    int pc_idx = processes[p].mem_start + 2;    
+                    
+                    // Sync the State String
+                    if (processes[p].state == STATE_READY) strcpy(main_memory[state_idx].value, "READY");
+                    else if (processes[p].state == STATE_RUNNING) strcpy(main_memory[state_idx].value, "RUNNING");
+                    else if (processes[p].state == STATE_BLOCKED) strcpy(main_memory[state_idx].value, "BLOCKED");
+
+                    // Sync the PC Number
+                    sprintf(main_memory[pc_idx].value, "%d", processes[p].program_counter);
+                }
+            }
+
+            printQueue(&ready_queue, "Ready Queue");
+
+            // Print all Blocked and Semaphore Queues
+            printQueue(&general_blocked_queue, "General Blocked Queue");
+            printQueue(&userInput.blocked_queue, "userInput Semaphore Queue");
+            printQueue(&userOutput.blocked_queue, "userOutput Semaphore Queue");
+            printQueue(&fileAccess.blocked_queue, "fileAccess Semaphore Queue");
+
+            print_memory_state(main_memory);
+            print_disk_state(hard_disk);
+
+            current_time++; 
+        }
     }
     else if (scheduling_choice == 3)
     {
@@ -284,6 +452,8 @@ int main()
         int current_queue_level = -1; // Tracks which queue the active process came from
         int process_ticks = 0;        // Stopwatch for the Time Quantum
         int runningProcessID = -1;
+
+        int process_queue_history[3] = {0, 0, 0};
 
         int arrival_times[3] = {0, 1, 4};
         int service_times[3];
@@ -395,6 +565,9 @@ int main()
                 if (runningProcessID != -1) {
                     process_ticks = 0; 
                     processes[runningProcessID - 1].state = STATE_RUNNING;
+
+                    process_queue_history[runningProcessID - 1] = current_queue_level;
+
                     printf("[Scheduler]: Selected P%d from Q%d\n", runningProcessID, current_queue_level);
                 }
             }
@@ -415,10 +588,23 @@ int main()
                 execute_instruction(main_memory[pc].value, runningProcessID, main_memory, processes);
                 
                 // ---> THE MISSING CATCHER BLOCK <---
-                while(!isEmpty(&ready_queue)) {
-                    int woken_id = dequeue(&ready_queue);
-                    printf("[MLFQ]: Process P%d woke up! Giving it VIP priority in Q0.\n", woken_id);
-                    enqueue(&q0, woken_id);
+                while (!isEmpty(&ready_queue)) {
+                    int woken_id = ready_queue.process_ids[ready_queue.front];
+                    remove_from_queue(&ready_queue, woken_id);
+                    
+                    if (woken_id >= 1 && woken_id <= 3) {
+                        processes[woken_id - 1].state = STATE_READY;
+                        
+                        // Look up where this process came from
+                        int target_q = process_queue_history[woken_id - 1];
+                        printf("[MLFQ]: Process P%d woke up! Returning it to its bookmarked Q%d.\n", woken_id, target_q);
+                        
+                        // Put it back in its historical queue
+                        if (target_q == 0) enqueue(&q0, woken_id);
+                        else if (target_q == 1) enqueue(&q1, woken_id);
+                        else if (target_q == 2) enqueue(&q2, woken_id);
+                        else if (target_q == 3) enqueue(&q3, woken_id);
+                    }
                 }
                 // -----------------------------------
 
@@ -456,11 +642,39 @@ int main()
             }
 
             // --- 7. SYSTEM TRACE ---
+
+            // ---> THE FIX: SYNC PCB STATE TO MAIN MEMORY STRINGS <---
+            for (int p = 0; p < 3; p++) {
+                // If the process is currently loaded in memory
+                if (processes[p].mem_start != -1) {
+                    int state_idx = processes[p].mem_start + 1; // State is always at offset +1
+                    int pc_idx = processes[p].mem_start + 2;    // PC is at offset +2
+                    
+                    if (processes[p].state == STATE_READY) {
+                        strcpy(main_memory[state_idx].value, "READY");
+                    } else if (processes[p].state == STATE_RUNNING) {
+                        strcpy(main_memory[state_idx].value, "RUNNING");
+                    } else if (processes[p].state == STATE_BLOCKED) {
+                        strcpy(main_memory[state_idx].value, "BLOCKED");
+                    }
+                    // 2. Sync the PC Number (Convert int to string)
+                    sprintf(main_memory[pc_idx].value, "%d", processes[p].program_counter);
+                }
+            }
+
             printQueue(&q0, "Queue 0 (Q=1)");
             printQueue(&q1, "Queue 1 (Q=2)");
             printQueue(&q2, "Queue 2 (Q=4)");
             printQueue(&q3, "Queue 3 (Q=8)");
+
+            // Print all Blocked and Semaphore Queues
+            printQueue(&general_blocked_queue, "General Blocked Queue");
+            printQueue(&userInput.blocked_queue, "userInput Semaphore Queue");
+            printQueue(&userOutput.blocked_queue, "userOutput Semaphore Queue");
+            printQueue(&fileAccess.blocked_queue, "fileAccess Semaphore Queue");
+
             print_memory_state(main_memory);
+            print_disk_state(hard_disk);
 
             current_time++; 
         }

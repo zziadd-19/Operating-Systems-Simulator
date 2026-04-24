@@ -203,3 +203,21 @@ void ensure_process_in_memory(int processID, PCB processes[], MemoryWord main_me
     printf("[Memory Manager]: P%d successfully swapped back into RAM [Indices %d to %d].\n", 
            processID, start_idx, processes[p_idx].mem_end);
 }
+
+// Helper function to display the current state of the Hard Disk
+void print_disk_state(MemoryWord disk[]) {
+    printf("\n--- Hard Disk Content ---\n");
+    int free_space = 0;
+    
+    for (int i = 0; i < 100; i++) {
+        // If the slot is occupied, print it cleanly
+        if (disk[i].name[0] != '\0') {
+            // %-15s adds spacing so the colons line up perfectly
+            printf("[%02d] %-15s : %s\n", i, disk[i].name, disk[i].value);
+        } else {
+            free_space++;
+        }
+    }
+    printf("-> [Free Space: %d/100 words]\n", free_space);
+    printf("---------------------------\n");
+}
