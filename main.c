@@ -4,21 +4,22 @@
 #include <stdbool.h>
 #include "os_sim.h"
 
-// --- GLOBAL HARDWARE SIMULATION ---
+// INITILIZATION
+
 MemoryWord hard_disk[100];
 MemoryWord main_memory[40]; 
 
-// Initialize your three required Semaphores 
+
 BinarySemaphore userInput = {1, -1, {{0}, 0, 0, 0}};
 BinarySemaphore userOutput = {1, -1, {{0}, 0, 0, 0}};
 BinarySemaphore fileAccess = {1, -1, {{0}, 0, 0, 0}};
 
-// Initialize your system queues
+
 Queue ready_queue = {{0}, 0, 0, 0};
 Queue general_blocked_queue = {{0}, 0, 0, 0};
 
 
-// --- HELPER FUNCTIONS ---
+//HELPER FUNCTIONS
 
 int get_running_process(PCB processes[], int total) {
     for (int i = 0; i < total; i++) {
@@ -31,7 +32,7 @@ int get_running_process(PCB processes[], int total) {
 
 // Helper to find the value of a variable in a process's memory block
 char* get_variable_value(int processID, char* varName, MemoryWord memory[], PCB processes[]) {
-    int p_idx = processID - 1; // --> FIX: Convert ID to 0-based array index
+    int p_idx = processID - 1; 
     int start = processes[p_idx].mem_start;
     
     // Variables are always at offsets +4, +5, and +6
@@ -45,7 +46,7 @@ char* get_variable_value(int processID, char* varName, MemoryWord memory[], PCB 
 
 // Helper to update a variable's value or assign a new one to an empty slot
 void set_variable_value(int processID, char* varName, char* newValue, MemoryWord memory[], PCB processes[]) {
-    int p_idx = processID - 1; // --> FIX: Convert ID to 0-based array index
+    int p_idx = processID - 1; 
     int start = processes[p_idx].mem_start;
     
     // First, try to find if the variable already exists to update it
@@ -72,9 +73,7 @@ void print_memory_state(MemoryWord memory[]) {
     int free_space = 0;
     
     for (int i = 0; i < 40; i++) {
-        // If the slot is occupied, print it cleanly
         if (memory[i].name[0] != '\0') {
-            // %-15s adds spacing so the colons line up perfectly in the terminal
             printf("[%02d] %-15s : %s\n", i, memory[i].name, memory[i].value);
         } else {
             free_space++;
@@ -89,7 +88,10 @@ void print_memory_state(MemoryWord memory[]) {
 
 int main()
 {
-    // --- 1. INITIALIZATION (RESTORED) ---
+    // ---> Disable buffering so Node.js gets live text! <---
+    setbuf(stdout, NULL);
+    
+    // --- 1. INITIALIZATION ---
     int current_time = 0;
     int finished_processes = 0;
     int scheduling_choice;
@@ -102,7 +104,6 @@ int main()
         processes[i].mem_end = -1;
     }
 
-    // --> ADD THESE THREE LINES BACK <--
     init_memory(main_memory);
     initQueue(&ready_queue);
     initQueue(&general_blocked_queue);
@@ -118,8 +119,28 @@ int main()
     }
 
 
-    // --- 2. SCHEDULING PROMPT ---
-    printf("Select Scheduling Technique:\n");
+    // --- 2. OS SETUP & SYSTEM CONFIGURATION ---
+    int arrival_times[3];
+    const char *programs[] = {"Program_1.txt", "Program_2.txt", "Program_3.txt"};
+    
+    printf("\n--- System Configuration ---\n");
+    printf("Enter Arrival Time for P1 (%s): ", programs[0]);
+    scanf("%d", &arrival_times[0]);
+    printf("Enter Arrival Time for P2 (%s): ", programs[1]);
+    scanf("%d", &arrival_times[1]);
+    printf("Enter Arrival Time for P3 (%s): ", programs[2]);
+    scanf("%d", &arrival_times[2]);
+
+    // Calculate service times globally
+    int service_times[3];
+    for (int i = 0; i < 3; i++) {
+        service_times[i] = get_program_memory_size(programs[i]) - 7;
+    }
+    
+    int disk_locations[3] = {-1, -1, -1}; 
+
+    // --> SCHEDULING PROMPT <--
+    printf("\nSelect Scheduling Technique:\n");
     printf("1. Highest Response Ratio Next (HRRN)\n");
     printf("2. Round Robin (RR)\n");
     printf("3. Multilevel Feedback Queue (MLFQ)\n");
@@ -131,18 +152,7 @@ int main()
     if (scheduling_choice == 1)
     {
         printf("\n--- Starting HRRN  ---\n");
-        
-        // --- PRE-LOOP SETUP ---
         int runningProcessID = -1;
-        int arrival_times[3] = {0, 1, 4};
-        int service_times[3];
-        int disk_locations[3] = {-1, -1, -1}; 
-        const char *programs[] = {"Program_1.txt", "Program_2.txt", "Program_3.txt"};
-
-        // Calculate service times dynamically
-        for (int i = 0; i < 3; i++) {
-            service_times[i] = get_program_memory_size(programs[i]) - 7;
-        }
         
         while (finished_processes < 3)
         {
@@ -213,7 +223,6 @@ int main()
                 if (!is_process_in_memory(runningProcessID, processes))
                 {
                     printf("[OS Alert]: P%d is on the Disk! Need to swap it back in.\n", runningProcessID);
-                    
                     ensure_process_in_memory(runningProcessID, processes, main_memory, hard_disk, 
                                              disk_locations, service_times, current_time, arrival_times);
                 }
@@ -261,9 +270,20 @@ int main()
             }
 
             // 5. SYSTEM TRACE
-            printQueue(&ready_queue, "Ready Queue");
+            for (int p = 0; p < 3; p++) {
+                if (processes[p].mem_start != -1) {
+                    int state_idx = processes[p].mem_start + 1; 
+                    int pc_idx = processes[p].mem_start + 2;    
+                    
+                    if (processes[p].state == STATE_READY) strcpy(main_memory[state_idx].value, "READY");
+                    else if (processes[p].state == STATE_RUNNING) strcpy(main_memory[state_idx].value, "RUNNING");
+                    else if (processes[p].state == STATE_BLOCKED) strcpy(main_memory[state_idx].value, "BLOCKED");
 
-            // Print all Blocked and Semaphore Queues
+                    sprintf(main_memory[pc_idx].value, "%d", processes[p].program_counter);
+                }
+            }
+
+            printQueue(&ready_queue, "Ready Queue");
             printQueue(&general_blocked_queue, "General Blocked Queue");
             printQueue(&userInput.blocked_queue, "userInput Semaphore Queue");
             printQueue(&userOutput.blocked_queue, "userOutput Semaphore Queue");
@@ -280,25 +300,15 @@ int main()
         printf("\n--- Starting Round Robin Execution ---\n");
 
         // --- 1. SETUP RR VARIABLES ---
-        initQueue(&ready_queue); // Ensure the line is completely clean
+        initQueue(&ready_queue); 
         
         int time_quantum;
         printf("Enter the Time Quantum (Q): ");
         scanf("%d", &time_quantum);
         printf("-> Time Quantum set to %d ticks.\n", time_quantum);
 
-        int process_ticks = 0; // Stopwatch for the current process
+        int process_ticks = 0; 
         int runningProcessID = -1;
-
-        int arrival_times[3] = {0, 1, 4};
-        int service_times[3];
-        int disk_locations[3] = {-1, -1, -1};
-        const char *programs[] = {"Program_1.txt", "Program_2.txt", "Program_3.txt"};
-
-        // Calculate service times dynamically
-        for (int i = 0; i < 3; i++) {
-            service_times[i] = get_program_memory_size(programs[i]) - 7;
-        }
 
         while (finished_processes < 3)
         {
@@ -322,7 +332,6 @@ int main()
 
                     processes[i] = load_program_to_memory(main_memory, start_idx, programs[i], i + 1);
                     
-                    // Put brand new processes at the back of the line
                     enqueue(&ready_queue, processes[i].processID);
                     loaded[i] = true;
                 }
@@ -334,17 +343,15 @@ int main()
                     printf("[Round Robin]: P%d exceeded Time Quantum (%d ticks). Moving to back of line...\n", runningProcessID, time_quantum);
                     processes[runningProcessID - 1].state = STATE_READY;
                     
-                    // Throw them to the back of the ready_queue
                     enqueue(&ready_queue, runningProcessID);
                     runningProcessID = -1;
                 }
             }
 
             // --- 4. THE SCHEDULER ---
-            // If the CPU is empty, just grab whoever is at the very front of the line
             if (runningProcessID == -1 && !isEmpty(&ready_queue)) {
                 runningProcessID = dequeue(&ready_queue);
-                process_ticks = 0; // Reset stopwatch for the new process
+                process_ticks = 0; 
                 processes[runningProcessID - 1].state = STATE_RUNNING;
                 printf("[Scheduler]: Selected P%d from Ready Queue\n", runningProcessID);
             }
@@ -365,8 +372,6 @@ int main()
                 execute_instruction(main_memory[pc].value, runningProcessID, main_memory, processes);
                 
                 // ---> THE STATE FIXER <---
-                // Because interpreter.c directly enqueues awoken processes into ready_queue
-                // but leaves their state as BLOCKED, we do a quick scan to force them to READY.
                 for (int i = 0; i < ready_queue.count; i++) {
                     int id = ready_queue.process_ids[(ready_queue.front + i) % MAX_PROCESSES];
                     if (processes[id - 1].state == STATE_BLOCKED) {
@@ -374,10 +379,9 @@ int main()
                         printf("[Round Robin]: Process P%d woke up and is Ready!\n", id);
                     }
                 }
-                // --------------------------
 
                 processes[p_idx].program_counter++;
-                process_ticks++; // Tick the quantum stopwatch!
+                process_ticks++;
 
                 // --- 6. STATE CHECKS ---
                 if (processes[p_idx].program_counter > processes[p_idx].mem_end)
@@ -406,25 +410,21 @@ int main()
                 printf("[CPU]: IDLE\n");
             }
 
-            // --- 7. SYSTEM TRACE (With the Memory Synchronizer!) ---
+            // --- 7. SYSTEM TRACE ---
             for (int p = 0; p < 3; p++) {
                 if (processes[p].mem_start != -1) {
                     int state_idx = processes[p].mem_start + 1; 
                     int pc_idx = processes[p].mem_start + 2;    
                     
-                    // Sync the State String
                     if (processes[p].state == STATE_READY) strcpy(main_memory[state_idx].value, "READY");
                     else if (processes[p].state == STATE_RUNNING) strcpy(main_memory[state_idx].value, "RUNNING");
                     else if (processes[p].state == STATE_BLOCKED) strcpy(main_memory[state_idx].value, "BLOCKED");
 
-                    // Sync the PC Number
                     sprintf(main_memory[pc_idx].value, "%d", processes[p].program_counter);
                 }
             }
 
             printQueue(&ready_queue, "Ready Queue");
-
-            // Print all Blocked and Semaphore Queues
             printQueue(&general_blocked_queue, "General Blocked Queue");
             printQueue(&userInput.blocked_queue, "userInput Semaphore Queue");
             printQueue(&userOutput.blocked_queue, "userOutput Semaphore Queue");
@@ -442,28 +442,20 @@ int main()
 
         // --- 1. SETUP MLFQ VARIABLES ---
         Queue q0, q1, q2, q3;
-        initQueue(&q0);
-        initQueue(&q1);
-        initQueue(&q2);
-        initQueue(&q3);
-        
-        initQueue(&ready_queue); // ---> THIS LINE FIXES THE P0 BUG <---
+        initQueue(&q0); initQueue(&q1); initQueue(&q2); initQueue(&q3);
+        initQueue(&ready_queue); 
 
-        int current_queue_level = -1; // Tracks which queue the active process came from
-        int process_ticks = 0;        // Stopwatch for the Time Quantum
+        // --> TA EVALUATION VARIABLES: Change these if asked! <--
+        int q0_quantum = 1;
+        int q1_quantum = 2;
+        int q2_quantum = 4;
+        int q3_quantum = 8;
+        // -------------------------------------------------------
+
+        int current_queue_level = -1; 
+        int process_ticks = 0;        
         int runningProcessID = -1;
-
         int process_queue_history[3] = {0, 0, 0};
-
-        int arrival_times[3] = {0, 1, 4};
-        int service_times[3];
-        int disk_locations[3] = {-1, -1, -1};
-        const char *programs[] = {"Program_1.txt", "Program_2.txt", "Program_3.txt"};
-
-        // Calculate service times
-        for (int i = 0; i < 3; i++) {
-            service_times[i] = get_program_memory_size(programs[i]) - 7;
-        }
 
         while (finished_processes < 3)
         {
@@ -487,7 +479,6 @@ int main()
 
                     processes[i] = load_program_to_memory(main_memory, start_idx, programs[i], i + 1);
                     
-                    // MLFQ RULE: All new processes start in the highest priority queue (Q0)
                     enqueue(&q0, processes[i].processID);
                     loaded[i] = true;
                 }
@@ -497,29 +488,29 @@ int main()
             if (runningProcessID != -1) {
                 bool kicked = false;
 
-                // ---> FIX: CHECK TIME QUANTUM FIRST <---
-                if (current_queue_level == 0 && process_ticks >= 1) {
+                // ---> CHECK TIME QUANTUM FIRST <---
+                if (current_queue_level == 0 && process_ticks >= q0_quantum) {
                     printf("[MLFQ]: P%d exceeded Q0 Quantum. Demoting to Q1...\n", runningProcessID);
                     enqueue(&q1, runningProcessID);
                     kicked = true;
                 } 
-                else if (current_queue_level == 1 && process_ticks >= 2) {
+                else if (current_queue_level == 1 && process_ticks >= q1_quantum) {
                     printf("[MLFQ]: P%d exceeded Q1 Quantum. Demoting to Q2...\n", runningProcessID);
                     enqueue(&q2, runningProcessID);
                     kicked = true;
                 } 
-                else if (current_queue_level == 2 && process_ticks >= 4) {
+                else if (current_queue_level == 2 && process_ticks >= q2_quantum) {
                     printf("[MLFQ]: P%d exceeded Q2 Quantum. Demoting to Q3...\n", runningProcessID);
                     enqueue(&q3, runningProcessID);
                     kicked = true;
                 }
-                else if (current_queue_level == 3 && process_ticks >= 8) {
+                else if (current_queue_level == 3 && process_ticks >= q3_quantum) {
                     printf("[MLFQ]: P%d exceeded Q3 Quantum. Cycling back to end of Q3...\n", runningProcessID);
                     enqueue(&q3, runningProcessID);
                     kicked = true;
                 }
 
-                // ---> THEN CHECK FOR HIJACKS (If they haven't already been demoted) <---
+                // ---> THEN CHECK FOR HIJACKS <---
                 if (!kicked) {
                     bool higher_waiting = false;
                     if (current_queue_level > 0 && !isEmpty(&q0)) higher_waiting = true;
@@ -529,7 +520,6 @@ int main()
                     if (higher_waiting) {
                         printf("[MLFQ]: Priority Hijack! A higher priority process stole the CPU from P%d.\n", runningProcessID);
                         
-                        // Put the interrupted process back into its CURRENT queue
                         if (current_queue_level == 1) enqueue(&q1, runningProcessID);
                         else if (current_queue_level == 2) enqueue(&q2, runningProcessID);
                         else if (current_queue_level == 3) enqueue(&q3, runningProcessID);
@@ -538,7 +528,6 @@ int main()
                     }
                 }
 
-                // Free the CPU
                 if (kicked) {
                     processes[runningProcessID - 1].state = STATE_READY;
                     runningProcessID = -1; 
@@ -561,13 +550,10 @@ int main()
                     current_queue_level = 3;
                 }
 
-                // If we successfully picked someone, reset their stopwatch and mark them running
                 if (runningProcessID != -1) {
                     process_ticks = 0; 
                     processes[runningProcessID - 1].state = STATE_RUNNING;
-
                     process_queue_history[runningProcessID - 1] = current_queue_level;
-
                     printf("[Scheduler]: Selected P%d from Q%d\n", runningProcessID, current_queue_level);
                 }
             }
@@ -594,26 +580,20 @@ int main()
                     
                     if (woken_id >= 1 && woken_id <= 3) {
                         processes[woken_id - 1].state = STATE_READY;
-                        
-                        // Look up where this process came from
                         int target_q = process_queue_history[woken_id - 1];
                         printf("[MLFQ]: Process P%d woke up! Returning it to its bookmarked Q%d.\n", woken_id, target_q);
                         
-                        // Put it back in its historical queue
                         if (target_q == 0) enqueue(&q0, woken_id);
                         else if (target_q == 1) enqueue(&q1, woken_id);
                         else if (target_q == 2) enqueue(&q2, woken_id);
                         else if (target_q == 3) enqueue(&q3, woken_id);
                     }
                 }
-                // -----------------------------------
 
                 processes[p_idx].program_counter++;
-                process_ticks++; // TICK THE STOPWATCH for the active process!
+                process_ticks++; 
 
                 // --- 6. STATE CHECKS ---
-                // ... (the rest of your code is perfect)
-
                 if (processes[p_idx].program_counter > processes[p_idx].mem_end)
                 {
                     printf("[OS]: Process P%d has Finished Execution.\n", runningProcessID);
@@ -633,7 +613,6 @@ int main()
                 {
                     printf("[OS]: Process P%d is BLOCKED. Context switching...\n", runningProcessID);
                     runningProcessID = -1; 
-                    // Note: We do NOT queue them here. The semSignal handles waking them up.
                 }
             }
             else
@@ -642,13 +621,10 @@ int main()
             }
 
             // --- 7. SYSTEM TRACE ---
-
-            // ---> THE FIX: SYNC PCB STATE TO MAIN MEMORY STRINGS <---
             for (int p = 0; p < 3; p++) {
-                // If the process is currently loaded in memory
                 if (processes[p].mem_start != -1) {
-                    int state_idx = processes[p].mem_start + 1; // State is always at offset +1
-                    int pc_idx = processes[p].mem_start + 2;    // PC is at offset +2
+                    int state_idx = processes[p].mem_start + 1; 
+                    int pc_idx = processes[p].mem_start + 2;    
                     
                     if (processes[p].state == STATE_READY) {
                         strcpy(main_memory[state_idx].value, "READY");
@@ -657,7 +633,6 @@ int main()
                     } else if (processes[p].state == STATE_BLOCKED) {
                         strcpy(main_memory[state_idx].value, "BLOCKED");
                     }
-                    // 2. Sync the PC Number (Convert int to string)
                     sprintf(main_memory[pc_idx].value, "%d", processes[p].program_counter);
                 }
             }
@@ -667,7 +642,6 @@ int main()
             printQueue(&q2, "Queue 2 (Q=4)");
             printQueue(&q3, "Queue 3 (Q=8)");
 
-            // Print all Blocked and Semaphore Queues
             printQueue(&general_blocked_queue, "General Blocked Queue");
             printQueue(&userInput.blocked_queue, "userInput Semaphore Queue");
             printQueue(&userOutput.blocked_queue, "userOutput Semaphore Queue");

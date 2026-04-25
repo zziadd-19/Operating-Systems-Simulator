@@ -29,11 +29,6 @@ int get_program_memory_size(const char* filename) {
 
 PCB load_program_to_memory(MemoryWord memory[], int start_index, const char* filename, int process_id) {
 
-    if (strcmp(filename,"Program_2.txt")==0)
-    {
-        printf("xyz\n");
-    }
-
     PCB new_pcb; // Create the struct here
 
 

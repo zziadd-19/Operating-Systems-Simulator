@@ -61,6 +61,7 @@ int get_program_memory_size(const char* filename);
 PCB load_program_to_memory(MemoryWord memory[], int start_index, const char* filename, int process_id);
 char* get_variable_value(int processID, char* varName, MemoryWord memory[], PCB processes[]);
 void set_variable_value(int processID, char* varName, char* newValue, MemoryWord memory[], PCB processes[]);
+void print_disk_state(MemoryWord disk[]);
 
 void initQueue(Queue *q);
 bool isFull(Queue *q);
