@@ -1,10 +1,10 @@
-# 🖥️ OS Simulator with Live Web Dashboard
+# OS Simulator with Live Web Dashboard
 
 A comprehensive Operating System simulator written in **C**, featuring a fully dynamic CPU scheduler, memory manager, and concurrency controller. The C backend is bridged to a modern, dark-mode **Web Dashboard** using a **Node.js/Socket.io** server, allowing for real-time visualization of clock cycles, memory states, and system queues.
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 ### 1. CPU Scheduling Algorithms
 The OS features a fully dynamic scheduler capable of handling varied arrival times and dynamically assigned time slices.
@@ -31,14 +31,14 @@ A Node.js server wraps the C executable, streaming the `stdout` buffer directly 
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 * **Kernel/Backend:** C 
 * **Bridge Server:** Node.js, Express, Socket.io, Child Process API
 * **Frontend GUI:** HTML5, CSS3, Vanilla JavaScript
 
 ---
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
 ### Prerequisites
 1. **C Compiler** (e.g., GCC)
