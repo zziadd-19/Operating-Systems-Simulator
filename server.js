@@ -33,17 +33,32 @@ io.on('connection', (socket) => {
         }
         // --------------------------------------------------------------------------
 
+        // ---> THE FIX: Sliding window buffer to catch split chunks <---
+        let outputBuffer = ""; 
+
         // Capture the C program's output and send it to the GUI
         osProcess.stdout.on('data', (output) => {
             const text = output.toString();
+            
+            // 1. Emit instantly to the terminal so your prompts don't get delayed
             socket.emit('os_output', text);
             
-            // Try to extract the Clock Cycle to update a visual widget
-            const cycleMatches = [...text.matchAll(/=== Clock Cycle: (\d+) ===/g)];
+            // 2. Add the text to our sliding window memory
+            outputBuffer += text;
+            
+            // 3. Search the stitched buffer for the cycle
+            const cycleMatches = [...outputBuffer.matchAll(/=== Clock Cycle: (\d+) ===/g)];
             if (cycleMatches.length > 0) {
-                // Grab the very last match found in this chunk of text
+                // Grab the very last match found in this stitched text
                 const latestCycle = cycleMatches[cycleMatches.length - 1][1];
                 socket.emit('update_cycle', latestCycle);
+            }
+
+            // 4. Shrink the buffer! Keep only the last 100 characters.
+            // This prevents memory leaks while ensuring we don't accidentally cut 
+            // a '=== Clock Cycle ===' string in half for the next chunk.
+            if (outputBuffer.length > 100) {
+                outputBuffer = outputBuffer.slice(-100);
             }
         });
 
